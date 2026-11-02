@@ -29,7 +29,18 @@ CloneOC3Editor::CloneOC3Editor (CloneOC3Processor& p) : AudioProcessorEditor (&p
     setupKnob (octave, "octave", "OCTAVE");
     setupKnob (compact, "compact", "COMPACT");
 
-    setSize (520, 260);
+    // Bypass : coupe l'octave et grise le bouton OCTAVE
+    bypassButton.setClickingTogglesState (true);
+    bypassButton.setColour (juce::TextButton::buttonColourId, panel.brighter (0.15f));
+    bypassButton.setColour (juce::TextButton::buttonOnColourId, ledOn);
+    bypassButton.setColour (juce::TextButton::textColourOffId, accent);
+    bypassButton.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
+    bypassButton.onStateChange = [this] { updateBypassState(); };
+    addAndMakeVisible (bypassButton);
+    bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (processor.apvts, "bypass", bypassButton);
+    updateBypassState();
+
+    setSize (520, 300);
     startTimerHz (20);
 }
 
@@ -47,6 +58,15 @@ void CloneOC3Editor::setupKnob (Knob& k, const juce::String& paramId, const juce
     k.label.setFont (juce::FontOptions (14.0f, juce::Font::bold));
     addAndMakeVisible (k.label);
     k.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, paramId, k.slider);
+}
+
+void CloneOC3Editor::updateBypassState()
+{
+    const bool on = bypassButton.getToggleState();
+    octave.slider.setEnabled (! on);
+    octave.label.setEnabled (! on);
+    octave.slider.setAlpha (on ? 0.35f : 1.0f);
+    octave.label.setAlpha (on ? 0.35f : 1.0f);
 }
 
 void CloneOC3Editor::timerCallback()
@@ -88,6 +108,8 @@ void CloneOC3Editor::paint (juce::Graphics& g)
 void CloneOC3Editor::resized()
 {
     auto area = getLocalBounds().withTrimmedTop (56).reduced (20, 16);
+    bypassButton.setBounds (area.removeFromBottom (30).withSizeKeepingCentre (120, 28));
+    area.removeFromBottom (6);
     const int w = area.getWidth() / 4;
     for (auto* k : { &range, &direct, &octave, &compact })
     {

@@ -27,6 +27,9 @@ private:
     CloneOC3Processor& processor;
     juce::LookAndFeel_V4 lnf;
     Knob range, direct, octave, compact;
+    juce::TextButton bypassButton { "BYPASS" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttachment;
+    void updateBypassState();
     juce::String noteText { "-" };
     float led = 0.0f;
 };

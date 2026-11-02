@@ -50,6 +50,7 @@ private:
     std::atomic<float>* directParam = nullptr;
     std::atomic<float>* octaveParam = nullptr;
     std::atomic<float>* compactParam = nullptr;
+    std::atomic<float>* bypassParam = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CloneOC3Processor)
 };

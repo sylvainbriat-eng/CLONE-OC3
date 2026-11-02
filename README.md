@@ -11,6 +11,7 @@ Seule la note **la plus grave** que vous jouez reçoit une octave en dessous, à
 | **DIRECT** | Volume du son d'origine. |
 | **OCTAVE** | Volume de l'octave basse. |
 | **COMPACT** | Compression de l'octave : 0 % = dynamique naturelle, 100 % = basse très régulière. |
+| **BYPASS** | Coupe l'octave (le son direct continue). Le bouton OCTAVE est alors grisé. |
 
 L'écran affiche la note grave suivie et un témoin rouge s'allume quand l'octave est active.
 

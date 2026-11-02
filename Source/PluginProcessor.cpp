@@ -7,6 +7,7 @@ namespace ids
     static const juce::String direct  = "direct";
     static const juce::String octave  = "octave";
     static const juce::String compact = "compact";
+    static const juce::String bypass  = "bypass";
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout CloneOC3Processor::createLayout()
@@ -30,6 +31,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout CloneOC3Processor::createLay
         NormalisableRange<float> (0.0f, 100.0f, 1.0f), 50.0f,
         AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String ((int) v) + " %"; })));
 
+    // Bypass de l'octave : seul le son direct passe (comme le footswitch de la pédale)
+    p.push_back (std::make_unique<AudioParameterBool> (ParameterID { ids::bypass, 1 }, "Bypass", false));
+
     return { p.begin(), p.end() };
 }
 
@@ -43,6 +47,7 @@ CloneOC3Processor::CloneOC3Processor()
     directParam  = apvts.getRawParameterValue (ids::direct);
     octaveParam  = apvts.getRawParameterValue (ids::octave);
     compactParam = apvts.getRawParameterValue (ids::compact);
+    bypassParam  = apvts.getRawParameterValue (ids::bypass);
 }
 
 bool CloneOC3Processor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -94,7 +99,8 @@ void CloneOC3Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     engine.setParams (p);
 
     directGain.setTargetValue (juce::Decibels::decibelsToGain (directParam->load(), -59.9f));
-    octaveGain.setTargetValue (juce::Decibels::decibelsToGain (octaveParam->load(), -59.9f));
+    const bool bypassed = bypassParam->load() > 0.5f;
+    octaveGain.setTargetValue (bypassed ? 0.0f : juce::Decibels::decibelsToGain (octaveParam->load(), -59.9f));
 
     for (int i = 0; i < n; ++i)
     {
@@ -108,7 +114,7 @@ void CloneOC3Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     }
 
     detectedHz.store ((float) engine.getMeasuredHz());
-    octaveActive.store ((float) engine.getGate());
+    octaveActive.store (bypassed ? 0.0f : (float) engine.getGate());
 }
 
 juce::AudioProcessorEditor* CloneOC3Processor::createEditor() { return new CloneOC3Editor (*this); }
