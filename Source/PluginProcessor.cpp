@@ -139,6 +139,7 @@ void CloneOC3Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
 
     detectedHz.store ((float) engine.getMeasuredHz());
     ceilingHz.store ((float) engine.getCeilingHz());
+    memoryHz.store ((float) engine.getMemoryHz());
     octaveActive.store (bypassed ? 0.0f : (float) engine.getGate());
 }
 

@@ -56,8 +56,8 @@ CloneOC3Editor::CloneOC3Editor (CloneOC3Processor& p) : AudioProcessorEditor (&p
     autoAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (processor.apvts, "auto", autoButton);
     updateAutoState();
 
-    setSize (760, 300);
-    startTimerHz (20);
+    setSize (760, 360);
+    startTimerHz (30);
 }
 
 CloneOC3Editor::~CloneOC3Editor() { setLookAndFeel (nullptr); }
@@ -104,6 +104,13 @@ void CloneOC3Editor::timerCallback()
     const auto hz = processor.detectedHz.load();
     const auto newText = noteName (hz);
     const auto newLed = processor.octaveActive.load();
+    // barre de notes : rafraîchie à chaque tick, lissée pour un mouvement fluide
+    const float c = processor.ceilingHz.load();
+    barCeiling += 0.5f * (c - barCeiling);
+    barNote = hz;
+    barMemory = autoButton.getToggleState() ? processor.memoryHz.load() : 0.0f;
+    repaint (barArea);
+
     const auto newCeil = autoButton.getToggleState() ? "plafond " + noteName (processor.ceilingHz.load()) : juce::String();
     if (newText != noteText || newCeil != ceilingText || std::abs (newLed - led) > 0.05f)
     {
@@ -135,12 +142,84 @@ void CloneOC3Editor::paint (juce::Graphics& g)
                 top.removeFromRight (300), juce::Justification::centredRight);
 
     g.setColour (panel);
-    g.fillRoundedRectangle (getLocalBounds().withTrimmedTop (56).reduced (10).toFloat(), 8.0f);
+    g.fillRoundedRectangle (getLocalBounds().withTrimmedTop (116).reduced (10).toFloat(), 8.0f);
+
+    paintBar (g);
+}
+
+namespace
+{
+    // position horizontale (échelle de notes : log de la fréquence), 40 Hz -> 1100 Hz
+    constexpr float barMinHz = 40.0f, barMaxHz = 1100.0f;
+    float hzToX (float hz, juce::Rectangle<float> r)
+    {
+        hz = juce::jlimit (barMinHz, barMaxHz, hz);
+        return r.getX() + r.getWidth() * std::log (hz / barMinHz) / std::log (barMaxHz / barMinHz);
+    }
+}
+
+void CloneOC3Editor::paintBar (juce::Graphics& g)
+{
+    auto area = barArea.toFloat();
+    auto bar = area.withTrimmedTop (4).withHeight (22);
+    const bool isAuto = autoButton.getToggleState();
+    const juce::Colour zone = isAuto ? juce::Colour (0xff3a8ee6) : ledOn;
+
+    g.setColour (panel);
+    g.fillRoundedRectangle (bar, 4.0f);
+
+    // zone octaviée : de la gauche jusqu'au plafond
+    const float xc = hzToX (barCeiling, bar);
+    g.setColour (zone.withAlpha (0.45f));
+    g.fillRoundedRectangle (bar.withRight (xc), 4.0f);
+
+    // repères des cordes à vide (accordage standard)
+    g.setFont (juce::FontOptions (10.0f));
+    const std::pair<float, const char*> marks[] = { { 82.41f, "Mi" }, { 110.0f, "La" }, { 146.83f, "Re" },
+                                                    { 196.0f, "Sol" }, { 246.94f, "Si" }, { 329.63f, "Mi" }, { 659.26f, "Mi" } };
+    for (auto& m : marks)
+    {
+        const float x = hzToX (m.first, bar);
+        g.setColour (accent.withAlpha (0.25f));
+        g.drawVerticalLine ((int) x, bar.getY(), bar.getBottom());
+        g.setColour (accent.withAlpha (0.6f));
+        g.drawText (m.second, juce::Rectangle<float> (x - 15, bar.getBottom() + 1, 30, 12), juce::Justification::centred);
+    }
+
+    // note la plus grave mémorisée (mode AUTO) : d'où part le plafond
+    if (barMemory > 0.0f)
+    {
+        const float xm = hzToX (barMemory, bar);
+        g.setColour (zone.brighter (0.6f));
+        juce::Path tri;
+        tri.addTriangle (xm - 5, bar.getY() - 4, xm + 5, bar.getY() - 4, xm, bar.getY() + 3);
+        g.fillPath (tri);
+    }
+
+    // plafond
+    g.setColour (accent);
+    g.fillRect (juce::Rectangle<float> (xc - 1.5f, bar.getY() - 3, 3.0f, bar.getHeight() + 6));
+
+    // note jouée : verte si octaviée, grise sinon
+    if (barNote > 0.0f)
+    {
+        const float xn = hzToX (barNote, bar);
+        g.setColour (barNote <= barCeiling * 1.03f && led > 0.1f ? juce::Colour (0xff34c759) : accent.withAlpha (0.5f));
+        g.fillEllipse (xn - 6, bar.getCentreY() - 6, 12, 12);
+    }
+
+    // légende
+    g.setColour (accent.withAlpha (0.7f));
+    g.setFont (juce::FontOptions (11.0f));
+    g.drawText (isAuto ? "AUTO : zone octaviee (bleu) = sous le plafond, qui suit la note la plus grave (triangle) au rythme de TIME"
+                       : "Zone octaviee (rouge) = sous le RANGE  -  point vert : note grave octaviee",
+                area.withTrimmedTop (40), juce::Justification::centredLeft);
 }
 
 void CloneOC3Editor::resized()
 {
-    auto area = getLocalBounds().withTrimmedTop (56).reduced (20, 16);
+    barArea = getLocalBounds().withTrimmedTop (56).removeFromTop (60).reduced (20, 2);
+    auto area = getLocalBounds().withTrimmedTop (116).reduced (20, 16);
     auto buttons = area.removeFromBottom (30);
     const int bw = buttons.getWidth() / 6;
     autoButton.setBounds (buttons.removeFromLeft (2 * bw).withSizeKeepingCentre (120, 28)); // sous RANGE + TIME

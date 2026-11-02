@@ -40,6 +40,7 @@ public:
     std::atomic<float> detectedHz { 0.0f };
     std::atomic<float> octaveActive { 0.0f };
     std::atomic<float> ceilingHz { 150.0f };
+    std::atomic<float> memoryHz { 0.0f };
 
 private:
     oc3::PolyOctaveEngine engine;

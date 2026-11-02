@@ -203,6 +203,7 @@ public:
     double getGate() const       { return gate * confirmGain; }
     // Plafond actuel : bouton Range en manuel, plafond qui suit le jeu en AUTO.
     double getCeilingHz() const  { return params.autoRange ? autoCeiling() : params.rangeHz; }
+    double getMemoryHz() const   { return memoryHz; }
 
     // Traite un échantillon mono, renvoie uniquement le signal d'octave.
     inline double processSample (double in)

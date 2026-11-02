@@ -34,6 +34,11 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> autoAttachment;
     void updateAutoState();
     juce::String ceilingText;
+
+    // Barre de notes : zone octaviée, plafond, note la plus grave mémorisée, note jouée
+    juce::Rectangle<int> barArea;
+    float barCeiling = 150.0f, barNote = 0.0f, barMemory = 0.0f;
+    void paintBar (juce::Graphics&);
     juce::String noteText { "-" };
     float led = 0.0f;
 };

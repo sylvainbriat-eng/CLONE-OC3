@@ -18,6 +18,12 @@ Seule la note **la plus grave** que vous jouez reçoit une octave en dessous, à
 
 L'écran affiche la note grave suivie et un témoin rouge s'allume quand l'octave est active.
 
+**La barre de notes** (en haut) montre en direct ce qui se passe, du Mi grave aux notes aiguës :
+- la zone colorée = les notes qui seront octaviées (rouge en manuel jusqu'au RANGE, bleue en AUTO) ;
+- le trait blanc = le plafond ; en AUTO, il bouge selon votre jeu, à la vitesse réglée par TIME ;
+- le triangle (AUTO) = la note la plus grave mémorisée, point de départ du plafond ;
+- le rond = la note jouée, vert quand elle est octaviée.
+
 Repères pour RANGE : Mi grave 82 Hz, La 110 Hz, Ré 147 Hz, Sol 196 Hz, Si 247 Hz. En open D / open C / drop, la note la plus grave descend jusqu'à 65 Hz : c'est couvert.
 
 ## Installer sur Mac
