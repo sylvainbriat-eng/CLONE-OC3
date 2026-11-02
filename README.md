@@ -11,7 +11,7 @@ Seule la note **la plus grave** que vous jouez reçoit une octave en dessous, à
 | **DIRECT** | Volume du son d'origine. |
 | **OCTAVE** | Volume de l'octave basse. |
 | **COMPACT** | Compression de l'octave : 0 % = dynamique naturelle, 100 % = basse très régulière. |
-| **SENSIBILITÉ** | Anti-percussion. 0 % = attaque la plus franche, mais une frappe sur la caisse ou des cordes étouffées peuvent produire de l'octave. Plus haut = l'octave démarre plus doucement et ne monte à plein niveau qu'une fois une vraie note reconnue (environ 40 ms sur le Mi grave). Réglage d'origine : 30 %. |
+| **SENSIBILITÉ** | Anti-percussion. 0 % = attaque la plus franche, mais une frappe sur la caisse ou des cordes étouffées peuvent produire de l'octave. Plus haut = l'octave démarre plus doucement et ne monte à plein niveau qu'une fois une vraie note reconnue (environ 55 ms sur le Mi grave joué seul). Réglage d'origine : 30 %. |
 | **AUTO** | Le plafond n'est plus fixé par RANGE (grisé) : il se cale une octave au-dessus de la note la plus grave jouée récemment, et remonte si vous jouez plus haut. Fonctionne jusqu'à ~1000 Hz. |
 | **TIME** | (mode AUTO) Vitesse à laquelle le plafond remonte : de 50 ms (il suit tout de suite : la note la plus grave est toujours octaviée, même un solo) à 10 s (la basse garde la main longtemps, la mélodie au-dessus n'est pas octaviée). Réglage d'origine : 2,5 s. Grisé hors mode AUTO. |
 | **BYPASS** | Coupe l'octave (le son direct continue). Le bouton OCTAVE est alors grisé. |

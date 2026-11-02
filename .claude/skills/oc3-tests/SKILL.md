@@ -32,6 +32,10 @@ Point faible connu : passage d'une note grave à une plus aiguë (Mi2 → La2) :
 frappe sur la caisse +9 / −9 / coupée ; cordes étouffées −0,5 / −18,5 / coupée ; médiator seul −13 / −31 / coupée.
 Attaque de l'octave d'un Mi grave (à −6 dB) : 12 / 43 / 47 ms. CPU en AUTO ≈ 1,5 % d'un cœur.
 
+## Mise à jour (v0.5, filtres d'ordre 8)
+
+Nouveau test « Accords tenus (sons purs) » : 42 séries de 10 accords (7 accords × 3 fréquences d'échantillonnage × manuel/AUTO), volumes de cordes aléatoires (1 à 6 fois), pire série < 2 % du temps faux. Attaque de l'octave d'un Mi grave : 11 / 65 / 65 ms selon Sensibilité 0 / 50 / 100 %. CPU AUTO ≈ 3 % d'un cœur.
+
 ## Ajouter un cas
 
 Dans `main()` : `run ("nom", notes, rangeHz, noteLaPlusGraveHz, octaveAttendue, bruitDb);`

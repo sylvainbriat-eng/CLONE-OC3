@@ -65,15 +65,15 @@ private:
     }
 };
 
-// Un "pisteur" : passe-bas raide (24 dB/oct) placé juste sous une zone de notes,
+// Un "pisteur" : passe-bas très raide (48 dB/oct) placé juste sous une zone de notes,
 // suivi d'une bascule sur les passages par zéro. Une note située juste au-dessus
 // de la coupure domine toutes les notes plus aiguës : ses passages par zéro sont
 // propres, même au milieu d'un accord.
 struct Tracker
 {
-    Biquad hp, lp1, lp2;
-    double fc = 100;
-    double env = 0, prev = 0, lastFrac = 0, lastPeriod = 0;
+    Biquad hp, lp[4];
+    double fc = 100, hpHz = 25;
+    double env = 0, prev = 0, lastFrac = 0, lastPeriod = 0, lastPeriod2 = 0;
     double hz = 0;          // dernière fréquence confirmée
     long sinceCross = 0, sinceValid = 1 << 30;
     bool armed = false;
@@ -83,15 +83,28 @@ struct Tracker
     void setup (double fs, double cutoff)
     {
         fc = cutoff;
-        hp.setHighpass (fs, std::max (25.0, 0.5 * fc), 0.707);
-        lp1.setLowpass (fs, fc, 0.5412); // Butterworth ordre 4
-        lp2.setLowpass (fs, fc, 1.3066);
+        hpHz = std::max (25.0, 0.5 * fc);
+        hp.setHighpass (fs, hpHz, 0.707);
+        // Butterworth ordre 8 : une note juste au-dessus de la coupure écrase
+        // les notes plus aiguës, même 4 à 5 fois plus fortes (accords tenus).
+        static const double q[4] = { 0.5412, 1.3066, 0.5412, 1.3066 };
+        for (int i = 0; i < 4; ++i) lp[i].setLowpass (fs, fc, q[i]);
     }
+
+    // gain théorique du pisteur à une fréquence (pour estimer le niveau réel d'une note)
+    double gainAt (double f) const
+    {
+        const double r = f / fc, h = f / hpHz;
+        return (h * h / std::sqrt (1.0 + h * h * h * h)) / std::sqrt (1.0 + std::pow (r, 16.0));
+    }
+
+    // niveau estimé de la note confirmée, avant filtrage
+    double noteLevel() const { return hz > 0 ? env / std::max (gainAt (hz), 1.0e-3) : 0.0; }
 
     void reset()
     {
-        hp.reset(); lp1.reset(); lp2.reset();
-        env = prev = lastFrac = lastPeriod = hz = out = 0;
+        hp.reset(); for (auto& b : lp) b.reset();
+        env = prev = lastFrac = lastPeriod = lastPeriod2 = hz = out = 0;
         sinceCross = 0; sinceValid = 1 << 30;
         armed = false; flip = 1.0;
     }
@@ -101,7 +114,7 @@ struct Tracker
     inline void process (double x, double envAtk, double envRel, double fs)
     {
         fsCache = fs;
-        out = lp2.process (lp1.process (hp.process (x)));
+        out = lp[3].process (lp[2].process (lp[1].process (lp[0].process (hp.process (x)))));
         const double a = std::abs (out);
         env += (a > env ? envAtk : envRel) * (a - env);
 
@@ -117,16 +130,24 @@ struct Tracker
             armed = false;
             flip = -flip;
 
-            // On ne retient la mesure que si deux périodes successives concordent
-            // et si la note est bien dans la zone de ce pisteur (juste au-dessus
-            // de sa coupure) : sinon c'est un mélange de notes ou un transitoire.
-            const double f = fs / period;
-            if (lastPeriod > 0 && std::abs (period / lastPeriod - 1.0) < 0.05
-                && f > 0.93 * fc && f < 1.5 * fc)
+            // On ne retient la mesure que si les périodes concordent et si la note
+            // est bien dans la zone de ce pisteur (juste au-dessus de sa coupure) :
+            // sinon c'est un mélange de notes ou un transitoire.
+            //  - cas simple : deux périodes successives égales (±5 %) ;
+            //  - accord tenu : une quinte résiduelle décale les passages par zéro
+            //    une fois sur deux (périodes courte/longue alternées) : on accepte
+            //    si la période est égale à celle d'avant-avant (±3 %).
+            const bool steady = lastPeriod > 0 && std::abs (period / lastPeriod - 1.0) < 0.05;
+            const bool alternating = lastPeriod2 > 0 && std::abs (period / lastPeriod2 - 1.0) < 0.03
+                                     && std::abs (period / lastPeriod - 1.0) < 0.15;
+            const double avg = 0.5 * (period + lastPeriod);
+            const double f = fs / avg;
+            if ((steady || alternating) && f > windowLo * fc && f < windowHi * fc)
             {
-                hz = fs / (0.5 * (period + lastPeriod));
+                hz = f;
                 sinceValid = 0;
             }
+            lastPeriod2 = lastPeriod;
             lastPeriod = period;
         }
         prev = out;
@@ -134,6 +155,7 @@ struct Tracker
 
     static constexpr double hysteresis = 0.25;
     static constexpr double validHoldPeriods = 2.5;
+    static constexpr double windowLo = 0.97, windowHi = 1.25; // la note doit être juste au-dessus de la coupure
     double fsCache = 48000;
 };
 
@@ -150,9 +172,10 @@ public:
         double timeSeconds = 2.5;  // AUTO : temps pour que le plafond remonte quand on joue plus haut
     };
 
-    // Pisteurs espacés d'1/4 d'octave, de 40 Hz à ~1080 Hz (mode AUTO ; en manuel
+    // Pisteurs espacés d'1/6 d'octave, de 40 Hz à ~1080 Hz (mode AUTO ; en manuel
     // seuls ceux sous le Range tournent).
-    static constexpr int maxTrackers = 20;
+    static constexpr int trackersPerOctave = 6;
+    static constexpr int maxTrackers = 29;
     static constexpr double autoInputHz = 1250.0;
 
     void prepare (double sampleRate)
@@ -169,7 +192,7 @@ public:
         xfadeStep  = 1.0 / (0.004 * fs);
         unconfirmedMax = (long) (0.040 * fs);
         confirmAtk = coef (0.003);
-        for (int k = 0; k < maxTrackers; ++k) trackers[k].setup (fs, 40.0 * std::pow (2.0, k / 4.0));
+        for (int k = 0; k < maxTrackers; ++k) trackers[k].setup (fs, 40.0 * std::pow (2.0, k / (double) trackersPerOctave));
         paramsDirty = true;
         reset();
     }
@@ -228,7 +251,7 @@ public:
         double lowest = 0;
         // (rien n'est retenu dans le silence : le souffle ne doit pas fausser la mémoire)
         for (int k = 0; k < numTrackers; ++k)
-            if (env >= silenceThreshold && trackers[k].valid() && trackers[k].env > presenceRatio * presEnv
+            if (env >= silenceThreshold && trackers[k].valid() && trackers[k].noteLevel() > presenceRatio * presEnv
                 && (lowest <= 0.0 || trackers[k].hz < lowest * 0.97))
                 lowest = trackers[k].hz;
 

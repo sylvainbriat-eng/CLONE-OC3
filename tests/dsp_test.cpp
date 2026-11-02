@@ -217,6 +217,44 @@ int main()
     }
     run ("AUTO : Mi4 seul (330 Hz) -> octave", { { E4, 0.05, 0.8 } }, 150, E4, true, -200.0, true);
 
+    {
+        // Accords tenus (sons purs, volumes de cordes aléatoires de 1 à 6 fois, phases
+        // aléatoires) à 44,1 / 48 / 96 kHz, en manuel et en AUTO : la note la plus grave
+        // doit être suivie et octaviée plus de 98 % du temps.
+        const std::vector<std::vector<double>> chords = { { E2, B2 }, { E2, E3 }, { E2, B2, E3 }, { E2, B2, E3, Gs3 },
+                                                           { D2, A2, D3 }, { A2, E3, A3 }, { G2, D3, G3 } };
+        std::mt19937 rng (5); std::uniform_real_distribution<double> u (0, 1);
+        int worstBad = 0, worstTot = 1, cases = 0;
+        for (double fs : { 44100.0, 48000.0, 96000.0 })
+            for (int aut = 0; aut < 2; ++aut)
+                for (auto& ch : chords)
+                {
+                    int bad = 0, tot = 0;
+                    for (int tr = 0; tr < 10; ++tr)
+                    {
+                        std::vector<double> ph, am;
+                        for (size_t k = 0; k < ch.size(); ++k) { ph.push_back (u (rng) * 6.28); am.push_back (0.05 + 0.25 * u (rng)); }
+                        oc3::PolyOctaveEngine e; e.prepare (fs);
+                        oc3::PolyOctaveEngine::Params p; p.rangeHz = 150; p.autoRange = aut != 0; e.setParams (p);
+                        for (size_t i = 0; i < (size_t) fs; ++i)
+                        {
+                            double x = 0; for (size_t k = 0; k < ch.size(); ++k) x += am[k] * std::sin (2 * M_PI * ch[k] * i / fs + ph[k]);
+                            e.processSample (x);
+                            if (i > fs * 0.2 && i % 64 == 0)
+                            {
+                                ++tot;
+                                if (! (std::abs (e.getMeasuredHz() / ch[0] - 1) < 0.03 && e.getGate() > 0.9)) ++bad;
+                            }
+                        }
+                    }
+                    ++cases;
+                    if (bad * worstTot > worstBad * tot) { worstBad = bad; worstTot = tot; }
+                }
+        const double worst = 100.0 * worstBad / worstTot;
+        std::printf ("%-34s %d séries de 10 accords, pire série : %.1f %% du temps faux  %s\n",
+                     "Accords tenus (sons purs)", cases, worst, worst < 2.0 ? "OK" : "ECHEC");
+    }
+
     std::printf ("\nBruits non tonaux (octave produite, par rapport à celle d'un Mi grave) :\n");
     runNoise ("Frappe sur la caisse", 0);
     runNoise ("Cordes étouffées grattées", 1);

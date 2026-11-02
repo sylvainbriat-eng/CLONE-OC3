@@ -10,9 +10,9 @@ namespace
     juce::String noteName (float hz)
     {
         if (hz <= 0.0f) return "-";
-        static const char* names[] = { "Do", "Do#", "Re", "Re#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si" };
+        static const char* names[] = { "Do", "Do#", "R\xc3\xa9", "R\xc3\xa9#", "Mi", "Fa", "Fa#", "Sol", "Sol#", "La", "La#", "Si" };
         const int midi = (int) std::round (69.0 + 12.0 * std::log2 (hz / 440.0));
-        return juce::String (names[(midi % 12 + 12) % 12]) + juce::String (midi / 12 - 1);
+        return juce::String (juce::CharPointer_UTF8 (names[(midi % 12 + 12) % 12])) + juce::String (midi / 12 - 1);
     }
 }
 
@@ -29,7 +29,7 @@ CloneOC3Editor::CloneOC3Editor (CloneOC3Processor& p) : AudioProcessorEditor (&p
     setupKnob (direct, "direct", "DIRECT");
     setupKnob (octave, "octave", "OCTAVE");
     setupKnob (compact, "compact", "COMPACT");
-    setupKnob (sens, "sensitivity", "SENSIBILITE");
+    setupKnob (sens, "sensitivity", juce::String (juce::CharPointer_UTF8 ("SENSIBILIT\xc3\x89")));
 
     // Bypass : coupe l'octave et grise le bouton OCTAVE
     bypassButton.setClickingTogglesState (true);
@@ -175,7 +175,7 @@ void CloneOC3Editor::paintBar (juce::Graphics& g)
 
     // repères des cordes à vide (accordage standard)
     g.setFont (juce::FontOptions (10.0f));
-    const std::pair<float, const char*> marks[] = { { 82.41f, "Mi" }, { 110.0f, "La" }, { 146.83f, "Re" },
+    const std::pair<float, const char*> marks[] = { { 82.41f, "Mi" }, { 110.0f, "La" }, { 146.83f, "R\xc3\xa9" },
                                                     { 196.0f, "Sol" }, { 246.94f, "Si" }, { 329.63f, "Mi" }, { 659.26f, "Mi" } };
     for (auto& m : marks)
     {
@@ -183,7 +183,7 @@ void CloneOC3Editor::paintBar (juce::Graphics& g)
         g.setColour (accent.withAlpha (0.25f));
         g.drawVerticalLine ((int) x, bar.getY(), bar.getBottom());
         g.setColour (accent.withAlpha (0.6f));
-        g.drawText (m.second, juce::Rectangle<float> (x - 15, bar.getBottom() + 1, 30, 12), juce::Justification::centred);
+        g.drawText (juce::String (juce::CharPointer_UTF8 (m.second)), juce::Rectangle<float> (x - 15, bar.getBottom() + 1, 30, 12), juce::Justification::centred);
     }
 
     // note la plus grave mémorisée (mode AUTO) : d'où part le plafond
@@ -211,8 +211,8 @@ void CloneOC3Editor::paintBar (juce::Graphics& g)
     // légende
     g.setColour (accent.withAlpha (0.7f));
     g.setFont (juce::FontOptions (11.0f));
-    g.drawText (isAuto ? "AUTO : zone octaviee (bleu) = sous le plafond, qui suit la note la plus grave (triangle) au rythme de TIME"
-                       : "Zone octaviee (rouge) = sous le RANGE  -  point vert : note grave octaviee",
+    g.drawText (isAuto ? juce::String (juce::CharPointer_UTF8 ("AUTO : zone octavi\xc3\xa9" "e (bleu) = sous le plafond, qui suit la note la plus grave (triangle) au rythme de TIME"))
+                       : juce::String (juce::CharPointer_UTF8 ("Zone octavi\xc3\xa9" "e (rouge) = sous le RANGE  -  point vert : note grave octavi\xc3\xa9" "e")),
                 area.withTrimmedTop (40), juce::Justification::centredLeft);
 }
 
