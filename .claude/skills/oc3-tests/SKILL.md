@@ -26,6 +26,12 @@ g++ -O2 -std=c++17 -I Source tests/dsp_test.cpp -o /tmp/dsp_test && /tmp/dsp_tes
 
 Point faible connu : passage d'une note grave à une plus aiguë (Mi2 → La2) : ~100 ms de transition tant que le Mi2 résonne encore.
 
+## Résultats au 2 nov. 2026 (v0.3 : AUTO + anti-percussion)
+
+23 scénarios sur 23 OK (dont 5 en mode AUTO). Bruits non tonaux, octave produite par rapport à celle d'un Mi grave, pour Sensibilité 0 / 50 / 100 % :
+frappe sur la caisse +9 / −9 / coupée ; cordes étouffées −0,5 / −18,5 / coupée ; médiator seul −13 / −31 / coupée.
+Attaque de l'octave d'un Mi grave (à −6 dB) : 12 / 43 / 47 ms. CPU en AUTO ≈ 1,5 % d'un cœur.
+
 ## Ajouter un cas
 
 Dans `main()` : `run ("nom", notes, rangeHz, noteLaPlusGraveHz, octaveAttendue, bruitDb);`

@@ -22,7 +22,9 @@ Pour les bases (dBFS, filtres, échantillonnage), réutiliser le skill `digichek
    Le pisteur utilisé pour le son est celui dont la coupure est juste sous cette note. Changement de pisteur = fondu de 4 ms.
 5. **Fonction Range** : octave active si note la plus grave ≤ `Range × 1,03` (½ ton de tolérance). Pas de note confirmée pendant 40 ms alors qu'on joue → octave coupée. Après un silence, l'octave démarre ouverte tout de suite (attaque immédiate).
 6. **Octave** = `sortie du pisteur normalisée × bascule × niveau de jeu` → fréquence / 2, forme d'onde arrondie façon OC-3, puis passe-bas à `0,75 × Range`.
-7. **Compact** : compresseur sur l'octave, ratio 1:1 à 8:1, référence −12 dBFS, gain max +15,6 dB.
+7. **Anti-percussion (Sensibilité)** : tant qu'aucune note n'est confirmée depuis l'attaque (silence → jeu), l'octave est multipliée par `(1 − s)³` ; dès la confirmation elle monte à plein niveau en 3 ms. Coût : la confirmation prend ~40 ms sur Mi2 (3 passages par zéro + stabilisation du filtre).
+8. **Mode AUTO** : tous les pisteurs (jusqu'à ~1080 Hz, entrée filtrée à 1250 Hz) écoutent. Mémoire `memoryHz` de la note la plus grave : descend immédiatement, remonte vers la note jouée avec une constante de 2,5 s. Plafond = `memoryHz × 2,12` (octave + ½ ton). Rien n'est mémorisé dans le silence (sinon le souffle fausse la mémoire). La présence d'une note se mesure contre l'énergie sous 300 Hz (`presEnv`), sinon les cordes aiguës masquent la basse d'un accord.
+9. **Compact** : compresseur sur l'octave, ratio 1:1 à 8:1, référence −12 dBFS, gain max +15,6 dB.
 
 ## Ce qui n'a PAS marché (ne pas refaire)
 

@@ -62,7 +62,7 @@ static double rms (const std::vector<double>& x, size_t a, size_t b)
 
 struct Result { double subHz, expectHz, subDb, onsetMs; double stablePct, earlyPct; };
 
-static Result run (const std::string& name, const std::vector<Note>& notes, double range, double lowestHz, bool expectOctave, double noiseDb = -200.0)
+static Result run (const std::string& name, const std::vector<Note>& notes, double range, double lowestHz, bool expectOctave, double noiseDb = -200.0, bool autoMode = false)
 {
     auto in = pluck (notes, 1.5);
     {
@@ -70,7 +70,7 @@ static Result run (const std::string& name, const std::vector<Note>& notes, doub
         for (auto& v : in) v += g (rng);
     }
     oc3::PolyOctaveEngine eng; eng.prepare (FS);
-    oc3::PolyOctaveEngine::Params p; p.rangeHz = range; p.compact = 0.5; eng.setParams (p);
+    oc3::PolyOctaveEngine::Params p; p.rangeHz = range; p.compact = 0.5; p.autoRange = autoMode; eng.setParams (p);
     std::vector<double> sub (in.size());
     int stable = 0, total = 0, early = 0, earlyTotal = 0;
     const double t0 = notes.back().t0;
@@ -108,6 +108,71 @@ static Result run (const std::string& name, const std::vector<Note>& notes, doub
     return r;
 }
 
+// Bruits non tonaux : l'octave doit rester faible.
+static std::vector<double> percussion (int kind, double seconds)
+{
+    std::vector<double> out ((size_t) (seconds * FS), 0.0);
+    std::mt19937 rng (3); std::uniform_real_distribution<double> uni (-1.0, 1.0);
+    const size_t t0 = (size_t) (0.05 * FS);
+    if (kind == 0) // frappe sur la caisse : résonance de bois amortie + choc
+    {
+        for (size_t i = 0; i < (size_t) (0.25 * FS); ++i)
+        {
+            const double t = i / FS;
+            double v = 0.8 * std::exp (-t / 0.012) * std::sin (2 * M_PI * 105.0 * t + 0.6 * std::sin (2 * M_PI * 37.0 * t));
+            v += 0.5 * std::exp (-t / 0.008) * std::sin (2 * M_PI * 230.0 * t);
+            if (i < (size_t) (0.003 * FS)) v += 0.8 * uni (rng);
+            out[t0 + i] += v;
+        }
+    }
+    else if (kind == 1) // cordes étouffées grattées : 4 coups de bruit
+    {
+        for (int b = 0; b < 4; ++b)
+        {
+            double lpS = 0, hpS = 0, prev = 0;
+            const size_t s0 = t0 + (size_t) (b * 0.12 * FS);
+            for (size_t i = 0; i < (size_t) (0.025 * FS); ++i)
+            {
+                const double n = uni (rng) * std::exp (-(double) i / (0.006 * FS));
+                lpS += 0.15 * (n - lpS);           // passe-bas ~1,2 kHz
+                hpS = 0.98 * (hpS + lpS - prev);   // passe-haut ~150 Hz
+                prev = lpS;
+                out[s0 + i] += 2.5 * hpS;
+            }
+        }
+    }
+    else // attaque de médiator sans note : clic de 1 ms
+    {
+        for (size_t i = 0; i < (size_t) (0.001 * FS); ++i) out[t0 + i] += 0.9 * uni (rng);
+    }
+    return out;
+}
+
+static void runNoise (const char* name, int kind)
+{
+    // référence : niveau d'octave d'un Mi grave joué à la même force
+    auto ref = pluck ({ { 82.41, 0.05, 0.8 } }, 0.6);
+    std::printf ("%-34s", name);
+    for (double sens : { 0.0, 0.5, 1.0 })
+    {
+        auto measurePeak = [&] (const std::vector<double>& in)
+        {
+            oc3::PolyOctaveEngine eng; eng.prepare (FS);
+            oc3::PolyOctaveEngine::Params p; p.rangeHz = 150; p.sensitivity = sens; eng.setParams (p);
+            double peak = 0, acc = 0; int cnt = 0;
+            for (size_t i = 0; i < in.size(); ++i)
+            {
+                const double y = eng.processSample (0.5 * in[i]);
+                acc += y * y; if (++cnt == 240) { peak = std::max (peak, std::sqrt (acc / cnt)); acc = 0; cnt = 0; }
+            }
+            return peak;
+        };
+        const double leak = 20 * std::log10 (measurePeak (percussion (kind, 0.6)) / measurePeak (ref) + 1e-12);
+        std::printf ("  sensibilité %3.0f%% : %6.1f dB", sens * 100, leak);
+    }
+    std::printf ("\n");
+}
+
 int main()
 {
     const double E2 = 82.41, A2 = 110.0, D2 = 73.42, C2 = 65.41, B2 = 123.47, E3 = 164.81, Gs3 = 207.65,
@@ -133,15 +198,46 @@ int main()
     run ("Baritone Si grave (B1 61.7Hz)", { { 61.74, 0.05, 0.8 } }, 150, 61.74, true);
     run ("Drop C accord C2 G2 C3", strum ({ C2, G2, C3 }), 150, C2, true);
 
+    run ("AUTO : solo seul Si3 -> octave", { { B3, 0.05, 0.8 } }, 150, B3, true, -200.0, true);
+    run ("AUTO : Mi2 puis Si3 seul -> pas d'oct.", { { E2, 0.05, 0.8, 0.30 }, { B3, 0.40, 0.8 } }, 150, B3, false, -200.0, true);
+    run ("AUTO : accord Mi majeur", strum ({ E2, B2, E3, Gs3, B3, E4 }), 150, E2, true, -200.0, true);
+    run ("AUTO : open D", strum ({ D2, A2, D3, Fs3, A3, D4 }), 150, D2, true, -200.0, true);
+    run ("AUTO : Mi4 seul (330 Hz) -> octave", { { E4, 0.05, 0.8 } }, 150, E4, true, -200.0, true);
+
+    std::printf ("\nBruits non tonaux (octave produite, par rapport à celle d'un Mi grave) :\n");
+    runNoise ("Frappe sur la caisse", 0);
+    runNoise ("Cordes étouffées grattées", 1);
+    runNoise ("Médiator sans note", 2);
+    {
+        // prix à payer : temps pour que l'octave d'un Mi grave atteigne -6 dB de son niveau
+        auto in = pluck ({ { 82.41, 0.05, 0.8 } }, 0.5);
+        std::printf ("%-34s", "Attaque d'un Mi grave");
+        for (double sens : { 0.0, 0.5, 1.0 })
+        {
+            oc3::PolyOctaveEngine eng; eng.prepare (FS);
+            oc3::PolyOctaveEngine::Params p; p.rangeHz = 150; p.sensitivity = sens; eng.setParams (p);
+            std::vector<double> e; double acc = 0; int cnt = 0;
+            for (size_t i = 0; i < in.size(); ++i)
+            {
+                const double y = eng.processSample (0.5 * in[i]);
+                acc += y * y; if (++cnt == 48) { e.push_back (std::sqrt (acc / cnt)); acc = 0; cnt = 0; }
+            }
+            double mx = 0; for (size_t k = 50; k < 300 && k < e.size(); ++k) mx = std::max (mx, e[k]);
+            int ms = -1; for (size_t k = 50; k < e.size(); ++k) if (e[k] > 0.5 * mx) { ms = (int) k - 50; break; }
+            std::printf ("  sensibilité %3.0f%% : %4d ms   ", sens * 100, ms);
+        }
+        std::printf ("\n\n");
+    }
+
     // Charge processeur : secondes de calcul pour 10 s de son
     {
         auto in = pluck (strum ({ E2, B2, E3, Gs3, B3, E4 }), 10.0);
         oc3::PolyOctaveEngine eng; eng.prepare (FS);
-        oc3::PolyOctaveEngine::Params p; p.rangeHz = 400; eng.setParams (p);
+        oc3::PolyOctaveEngine::Params p; p.rangeHz = 400; p.autoRange = true; eng.setParams (p);
         auto c0 = std::chrono::steady_clock::now();
         double acc = 0; for (double v : in) acc += eng.processSample (v);
         double sec = std::chrono::duration<double> (std::chrono::steady_clock::now() - c0).count();
-        std::printf ("Charge CPU (range max) : %.3f s de calcul pour 10 s audio (%.2f %% d'un coeur) [%g]\n", sec, sec * 10.0, acc * 0);
+        std::printf ("Charge CPU (mode AUTO) : %.3f s de calcul pour 10 s audio (%.2f %% d'un coeur) [%g]\n", sec, sec * 10.0, acc * 0);
     }
     return 0;
 }

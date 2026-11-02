@@ -8,6 +8,8 @@ namespace ids
     static const juce::String octave  = "octave";
     static const juce::String compact = "compact";
     static const juce::String bypass  = "bypass";
+    static const juce::String sens    = "sensitivity";
+    static const juce::String autoR   = "auto";
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout CloneOC3Processor::createLayout()
@@ -31,6 +33,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout CloneOC3Processor::createLay
         NormalisableRange<float> (0.0f, 100.0f, 1.0f), 50.0f,
         AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String ((int) v) + " %"; })));
 
+    // Anti-percussion : 0 % = attaque franche, 100 % = seules les vraies notes sont octaviées
+    p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { ids::sens, 1 }, "Sensibilite",
+        NormalisableRange<float> (0.0f, 100.0f, 1.0f), 30.0f,
+        AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String ((int) v) + " %"; })));
+
+    // AUTO : le plafond suit le jeu (une octave au-dessus de la note la plus grave récente)
+    p.push_back (std::make_unique<AudioParameterBool> (ParameterID { ids::autoR, 1 }, "Auto", false));
+
     // Bypass de l'octave : seul le son direct passe (comme le footswitch de la pédale)
     p.push_back (std::make_unique<AudioParameterBool> (ParameterID { ids::bypass, 1 }, "Bypass", false));
 
@@ -48,6 +58,8 @@ CloneOC3Processor::CloneOC3Processor()
     octaveParam  = apvts.getRawParameterValue (ids::octave);
     compactParam = apvts.getRawParameterValue (ids::compact);
     bypassParam  = apvts.getRawParameterValue (ids::bypass);
+    sensParam    = apvts.getRawParameterValue (ids::sens);
+    autoParam    = apvts.getRawParameterValue (ids::autoR);
 }
 
 bool CloneOC3Processor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -96,6 +108,8 @@ void CloneOC3Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     p.rangeHz = rangeParam->load();
     p.compact = compactParam->load() / 100.0;
     p.octaveGain = 1.0; // le niveau est lissé ci-dessous
+    p.sensitivity = sensParam->load() / 100.0;
+    p.autoRange = autoParam->load() > 0.5f;
     engine.setParams (p);
 
     directGain.setTargetValue (juce::Decibels::decibelsToGain (directParam->load(), -59.9f));
@@ -114,6 +128,7 @@ void CloneOC3Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     }
 
     detectedHz.store ((float) engine.getMeasuredHz());
+    ceilingHz.store ((float) engine.getCeilingHz());
     octaveActive.store (bypassed ? 0.0f : (float) engine.getGate());
 }
 

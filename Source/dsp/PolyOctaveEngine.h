@@ -145,10 +145,14 @@ public:
         double rangeHz    = 150.0; // notes dont la fondamentale est sous cette fréquence -> octave
         double octaveGain = 1.0;   // niveau linéaire de l'octave
         double compact    = 0.5;   // 0 = dynamique naturelle, 1 = bas très compressé
+        double sensitivity = 0.5;  // anti-percussion : 0 = attaque franche, 1 = rejet strict des bruits
+        bool   autoRange  = false; // AUTO : le plafond suit le jeu au lieu du bouton Range
     };
 
-    // Pisteurs espacés d'1/4 d'octave, de 40 Hz à ~540 Hz.
-    static constexpr int maxTrackers = 16;
+    // Pisteurs espacés d'1/4 d'octave, de 40 Hz à ~1080 Hz (mode AUTO ; en manuel
+    // seuls ceux sous le Range tournent).
+    static constexpr int maxTrackers = 20;
+    static constexpr double autoInputHz = 1250.0;
 
     void prepare (double sampleRate)
     {
@@ -163,6 +167,8 @@ public:
         gateSmooth = coef (0.004);
         xfadeStep  = 1.0 / (0.004 * fs);
         unconfirmedMax = (long) (0.040 * fs);
+        confirmAtk = coef (0.003);
+        memoryRise = coef (autoMemorySeconds);
         for (int k = 0; k < maxTrackers; ++k) trackers[k].setup (fs, 40.0 * std::pow (2.0, k / 4.0));
         paramsDirty = true;
         reset();
@@ -170,7 +176,8 @@ public:
 
     void reset()
     {
-        dcBlock.reset(); lp1.reset(); lp2.reset(); post1.reset();
+        dcBlock.reset(); lp1.reset(); lp2.reset(); post1.reset(); presLp.reset();
+        presEnv = 0;
         for (auto& t : trackers) t.reset();
         env = level = compEnv = 0;
         measuredHz = 0;
@@ -179,16 +186,21 @@ public:
         xfade = 1.0;
         gate = 0;
         gateTarget = 1.0;
+        confirmGain = 0;
+        confirmedPhrase = false;
+        memoryHz = 0;
     }
 
     void setParams (const Params& p)
     {
-        if (std::abs (p.rangeHz - params.rangeHz) > 1.0e-6) paramsDirty = true;
+        if (std::abs (p.rangeHz - params.rangeHz) > 1.0e-6 || p.autoRange != params.autoRange) paramsDirty = true;
         params = p;
     }
 
     double getMeasuredHz() const { return measuredHz; }
-    double getGate() const       { return gate; }
+    double getGate() const       { return gate * confirmGain; }
+    // Plafond actuel : bouton Range en manuel, plafond qui suit le jeu en AUTO.
+    double getCeilingHz() const  { return params.autoRange ? autoCeiling() : params.rangeHz; }
 
     // Traite un échantillon mono, renvoie uniquement le signal d'octave.
     inline double processSample (double in)
@@ -201,21 +213,34 @@ public:
         const double a = std::abs (lp);
         env   += (a > env   ? envAtk   : envRel)   * (a - env);
         level += (a > level ? levelAtk : levelRel) * (a - level);
+        // référence de présence : énergie de la zone grave seulement (sinon, en AUTO,
+        // les cordes aiguës masqueraient la basse d'un accord)
+        const double pa = std::abs (presLp.process (x));
+        presEnv += (pa > presEnv ? envAtk : envRel) * (pa - presEnv);
 
         // 2. Tous les pisteurs tournent en parallèle (aucune latence ajoutée).
         for (int k = 0; k < numTrackers; ++k) trackers[k].process (lp, envAtk, envRel, fs);
 
         // 3. La note la plus grave = la plus basse fréquence confirmée par un pisteur.
         double lowest = 0;
+        // (rien n'est retenu dans le silence : le souffle ne doit pas fausser la mémoire)
         for (int k = 0; k < numTrackers; ++k)
-            if (trackers[k].valid() && trackers[k].env > presenceRatio * env
+            if (env >= silenceThreshold && trackers[k].valid() && trackers[k].env > presenceRatio * presEnv
                 && (lowest <= 0.0 || trackers[k].hz < lowest * 0.97))
                 lowest = trackers[k].hz;
 
         if (lowest > 0)
         {
             unconfirmed = 0;
+            confirmedPhrase = true;
             measuredHz = lowest;
+            if (params.autoRange)
+            {
+                // Mémoire de la note la plus grave : descend tout de suite,
+                // remonte doucement (~2,5 s) quand on joue plus haut.
+                if (memoryHz <= 0.0 || lowest < memoryHz) memoryHz = lowest;
+                else memoryHz *= std::pow (lowest / memoryHz, memoryRise);
+            }
             // le pisteur le mieux placé : coupure juste sous la note
             int best = 0;
             for (int k = 0; k < numTrackers; ++k)
@@ -223,21 +248,37 @@ public:
             select (best);
             // 4. Fonction Range : octave seulement si la note la plus grave est
             //    sous la limite (tolérance d'un demi-ton).
-            gateTarget = lowest <= params.rangeHz * 1.03 ? 1.0 : 0.0;
+            gateTarget = lowest <= getCeilingHz() * 1.03 ? 1.0 : 0.0;
         }
         else if (current < 0 || env < silenceThreshold)
         {
             // Attaque depuis le silence : on part tout de suite avec le pisteur
             // du haut de la plage (réponse immédiate), avant confirmation.
             select (numTrackers - 1);
-            if (env < silenceThreshold) { gateTarget = 1.0; measuredHz = 0; unconfirmed = 0; }
+            if (env < silenceThreshold) { gateTarget = 1.0; measuredHz = 0; unconfirmed = 0; confirmedPhrase = false; }
         }
         // On joue, mais aucune note grave n'est confirmée depuis 40 ms :
         // la note est au-dessus du Range, on coupe l'octave.
         if (lowest <= 0 && env >= silenceThreshold && ++unconfirmed > unconfirmedMax)
+        {
             gateTarget = 0.0;
+            confirmedPhrase = false;
+        }
 
         gate += gateSmooth * (gateTarget - gate);
+
+        // Anti-percussion : tant qu'aucune vraie note n'est confirmée (2 vibrations
+        // régulières), l'octave reste à un niveau réduit ; elle passe à plein niveau
+        // dès la confirmation. Une frappe sur la caisse ou des cordes étouffées ne
+        // sont jamais confirmées : elles ne laissent qu'un souffle.
+        const double sens = std::clamp (params.sensitivity, 0.0, 1.0);
+        const double floorGain = (1.0 - sens) * (1.0 - sens) * (1.0 - sens);
+        const double confirmTarget = confirmedPhrase ? 1.0 : floorGain;
+        confirmGain += (confirmTarget > confirmGain ? confirmAtk : gateSmooth) * (confirmTarget - confirmGain);
+
+        // En AUTO, le filtre de l'octave suit la note jouée.
+        if (params.autoRange && measuredHz > 0 && (++postCounter & 15) == 0)
+            post1.setLowpass (fs, std::max (60.0, 1.3 * measuredHz), 0.707);
 
         // 5. Octave : sinusoïde de la note grave (normalisée) x bascule -> fréquence / 2,
         //    puis on lui redonne la dynamique du jeu. Fondu court lors d'un changement de pisteur.
@@ -257,7 +298,7 @@ public:
         g = std::min (g, maxCompGain);
         const double floorFade = std::clamp ((env - silenceThreshold) / (4.0 * silenceThreshold), 0.0, 1.0);
 
-        return sub * g * gate * floorFade * params.octaveGain;
+        return sub * g * gate * confirmGain * floorFade * params.octaveGain;
     }
 
 private:
@@ -278,14 +319,24 @@ private:
         xfade = previous < 0 ? 1.0 : 0.0;
     }
 
+    double autoCeiling() const
+    {
+        // une octave + un demi-ton au-dessus de la note la plus grave récente
+        return memoryHz > 0.0 ? memoryHz * 2.1189 : autoInputHz;
+    }
+
     void updateFilters()
     {
-        const double fc = params.rangeHz * 1.25;
+        // En AUTO, tous les pisteurs écoutent (jusqu'à ~1 kHz) : le plafond est
+        // décidé par la mémoire de jeu, pas par un filtre fixe.
+        const double top = params.autoRange ? autoInputHz / 1.25 : params.rangeHz;
+        const double fc = top * 1.25;
         lp1.setLowpass (fs, fc, 0.5412); // Butterworth ordre 4
         lp2.setLowpass (fs, fc, 1.3066);
-        post1.setLowpass (fs, std::max (params.rangeHz * 0.75, 60.0), 0.707);
+        presLp.setLowpass (fs, params.autoRange ? 300.0 : fc, 0.707);
+        post1.setLowpass (fs, std::max ((params.autoRange ? 150.0 : params.rangeHz) * 0.75, 60.0), 0.707);
         numTrackers = 1;
-        while (numTrackers < maxTrackers && trackers[numTrackers].fc < params.rangeHz * 1.1) ++numTrackers;
+        while (numTrackers < maxTrackers && trackers[numTrackers].fc < top * 1.1) ++numTrackers;
         if (current >= numTrackers) current = -1;
         if (previous >= numTrackers) previous = -1;
         paramsDirty = false;
@@ -295,7 +346,8 @@ private:
     Params params;
     bool paramsDirty = true;
 
-    Biquad dcBlock, lp1, lp2, post1;
+    Biquad dcBlock, lp1, lp2, post1, presLp;
+    double presEnv = 0;
     Tracker trackers[maxTrackers];
     int numTrackers = maxTrackers;
     int current = -1, previous = -1;
@@ -306,7 +358,12 @@ private:
     double measuredHz = 0;
     long unconfirmed = 0, unconfirmedMax = 1920;
     double gate = 0, gateTarget = 1.0;
+    double confirmGain = 0, confirmAtk = 0.01;
+    bool confirmedPhrase = false;
+    double memoryHz = 0, memoryRise = 0.0001;
+    unsigned postCounter = 0;
 
+    static constexpr double autoMemorySeconds = 2.5;
     static constexpr double silenceThreshold = 0.0005; // ~ -66 dBFS
     static constexpr double presenceRatio = 0.08;      // une note qui s'éteint (-22 dB) ne compte plus
     static constexpr double compRef = 0.25;            // ~ -12 dBFS

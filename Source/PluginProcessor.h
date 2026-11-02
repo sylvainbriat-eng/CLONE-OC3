@@ -39,6 +39,7 @@ public:
     // Lu par l'interface (affichage de la note suivie)
     std::atomic<float> detectedHz { 0.0f };
     std::atomic<float> octaveActive { 0.0f };
+    std::atomic<float> ceilingHz { 150.0f };
 
 private:
     oc3::PolyOctaveEngine engine;
@@ -51,6 +52,8 @@ private:
     std::atomic<float>* octaveParam = nullptr;
     std::atomic<float>* compactParam = nullptr;
     std::atomic<float>* bypassParam = nullptr;
+    std::atomic<float>* sensParam = nullptr;
+    std::atomic<float>* autoParam = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CloneOC3Processor)
 };

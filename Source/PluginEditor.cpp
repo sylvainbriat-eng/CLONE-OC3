@@ -28,6 +28,7 @@ CloneOC3Editor::CloneOC3Editor (CloneOC3Processor& p) : AudioProcessorEditor (&p
     setupKnob (direct, "direct", "DIRECT");
     setupKnob (octave, "octave", "OCTAVE");
     setupKnob (compact, "compact", "COMPACT");
+    setupKnob (sens, "sensitivity", "SENSIBILITE");
 
     // Bypass : coupe l'octave et grise le bouton OCTAVE
     bypassButton.setClickingTogglesState (true);
@@ -40,7 +41,21 @@ CloneOC3Editor::CloneOC3Editor (CloneOC3Processor& p) : AudioProcessorEditor (&p
     bypassAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (processor.apvts, "bypass", bypassButton);
     updateBypassState();
 
-    setSize (520, 300);
+    // AUTO : le plafond suit le jeu, le bouton RANGE est grisé
+    for (auto* b : { &autoButton })
+    {
+        b->setClickingTogglesState (true);
+        b->setColour (juce::TextButton::buttonColourId, panel.brighter (0.15f));
+        b->setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff3a8ee6));
+        b->setColour (juce::TextButton::textColourOffId, accent);
+        b->setColour (juce::TextButton::textColourOnId, juce::Colours::white);
+    }
+    autoButton.onStateChange = [this] { updateAutoState(); };
+    addAndMakeVisible (autoButton);
+    autoAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (processor.apvts, "auto", autoButton);
+    updateAutoState();
+
+    setSize (640, 300);
     startTimerHz (20);
 }
 
@@ -69,14 +84,25 @@ void CloneOC3Editor::updateBypassState()
     octave.label.setAlpha (on ? 0.35f : 1.0f);
 }
 
+void CloneOC3Editor::updateAutoState()
+{
+    const bool on = autoButton.getToggleState();
+    range.slider.setEnabled (! on);
+    range.label.setEnabled (! on);
+    range.slider.setAlpha (on ? 0.35f : 1.0f);
+    range.label.setAlpha (on ? 0.35f : 1.0f);
+}
+
 void CloneOC3Editor::timerCallback()
 {
     const auto hz = processor.detectedHz.load();
     const auto newText = noteName (hz);
     const auto newLed = processor.octaveActive.load();
-    if (newText != noteText || std::abs (newLed - led) > 0.05f)
+    const auto newCeil = autoButton.getToggleState() ? "plafond " + noteName (processor.ceilingHz.load()) : juce::String();
+    if (newText != noteText || newCeil != ceilingText || std::abs (newLed - led) > 0.05f)
     {
         noteText = newText;
+        ceilingText = newCeil;
         led = newLed;
         repaint (getLocalBounds().removeFromTop (56));
     }
@@ -99,7 +125,8 @@ void CloneOC3Editor::paint (juce::Graphics& g)
     g.fillEllipse (ledArea);
 
     g.setColour (accent.withAlpha (0.8f));
-    g.drawText ("Note grave : " + noteText, top.removeFromRight (170), juce::Justification::centredRight);
+    g.drawText ("Note grave : " + noteText + (ceilingText.isNotEmpty() ? "  -  " + ceilingText : juce::String()),
+                top.removeFromRight (300), juce::Justification::centredRight);
 
     g.setColour (panel);
     g.fillRoundedRectangle (getLocalBounds().withTrimmedTop (56).reduced (10).toFloat(), 8.0f);
@@ -108,10 +135,14 @@ void CloneOC3Editor::paint (juce::Graphics& g)
 void CloneOC3Editor::resized()
 {
     auto area = getLocalBounds().withTrimmedTop (56).reduced (20, 16);
-    bypassButton.setBounds (area.removeFromBottom (30).withSizeKeepingCentre (120, 28));
+    auto buttons = area.removeFromBottom (30);
+    const int bw = buttons.getWidth() / 5;
+    autoButton.setBounds (buttons.removeFromLeft (bw).withSizeKeepingCentre (100, 28));   // sous RANGE
+    buttons.removeFromLeft (bw);
+    bypassButton.setBounds (buttons.removeFromLeft (bw).withSizeKeepingCentre (100, 28)); // sous OCTAVE
     area.removeFromBottom (6);
-    const int w = area.getWidth() / 4;
-    for (auto* k : { &range, &direct, &octave, &compact })
+    const int w = area.getWidth() / 5;
+    for (auto* k : { &range, &direct, &octave, &compact, &sens })
     {
         auto col = area.removeFromLeft (w).reduced (6, 0);
         k->label.setBounds (col.removeFromTop (22));
