@@ -56,6 +56,7 @@ private:
     std::atomic<float>* sensParam = nullptr;
     std::atomic<float>* autoParam = nullptr;
     std::atomic<float>* timeParam = nullptr;
+    std::atomic<float>* shapeParam = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (CloneOC3Processor)
 };

@@ -25,9 +25,10 @@ CloneOC3Editor::CloneOC3Editor (CloneOC3Processor& p) : AudioProcessorEditor (&p
     setLookAndFeel (&lnf);
 
     setupKnob (range, "range", "RANGE");
-    setupKnob (time, "time", "TIME");
+    setupKnob (time, "time", "ACTUALISATION");
     setupKnob (direct, "direct", "DIRECT");
     setupKnob (octave, "octave", "OCTAVE");
+    setupKnob (shape, "shape", "FORME");
     setupKnob (compact, "compact", "COMPACT");
     setupKnob (sens, "sensitivity", juce::String (juce::CharPointer_UTF8 ("SENSIBILIT\xc3\x89")));
 
@@ -56,7 +57,7 @@ CloneOC3Editor::CloneOC3Editor (CloneOC3Processor& p) : AudioProcessorEditor (&p
     autoAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (processor.apvts, "auto", autoButton);
     updateAutoState();
 
-    setSize (760, 360);
+    setSize (880, 360);
     startTimerHz (30);
 }
 
@@ -71,7 +72,7 @@ void CloneOC3Editor::setupKnob (Knob& k, const juce::String& paramId, const juce
     k.label.setText (title, juce::dontSendNotification);
     k.label.setJustificationType (juce::Justification::centred);
     k.label.setColour (juce::Label::textColourId, accent);
-    k.label.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+    k.label.setFont (juce::FontOptions (12.5f, juce::Font::bold));
     addAndMakeVisible (k.label);
     k.attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (processor.apvts, paramId, k.slider);
 }
@@ -92,7 +93,7 @@ void CloneOC3Editor::updateAutoState()
     range.label.setEnabled (! on);
     range.slider.setAlpha (on ? 0.35f : 1.0f);
     range.label.setAlpha (on ? 0.35f : 1.0f);
-    // TIME ne sert qu'en mode AUTO
+    // ACTUALISATION ne sert qu'en mode AUTO
     time.slider.setEnabled (on);
     time.label.setEnabled (on);
     time.slider.setAlpha (on ? 1.0f : 0.35f);
@@ -211,7 +212,7 @@ void CloneOC3Editor::paintBar (juce::Graphics& g)
     // légende
     g.setColour (accent.withAlpha (0.7f));
     g.setFont (juce::FontOptions (11.0f));
-    g.drawText (isAuto ? juce::String (juce::CharPointer_UTF8 ("AUTO : zone octavi\xc3\xa9" "e (bleu) = sous le plafond, qui suit la note la plus grave (triangle) au rythme de TIME"))
+    g.drawText (isAuto ? juce::String (juce::CharPointer_UTF8 ("AUTO : zone octavi\xc3\xa9" "e (bleu) = sous le plafond, qui suit la note la plus grave (triangle) au rythme d'ACTUALISATION"))
                        : juce::String (juce::CharPointer_UTF8 ("Zone octavi\xc3\xa9" "e (rouge) = sous le RANGE  -  point vert : note grave octavi\xc3\xa9" "e")),
                 area.withTrimmedTop (40), juce::Justification::centredLeft);
 }
@@ -221,13 +222,13 @@ void CloneOC3Editor::resized()
     barArea = getLocalBounds().withTrimmedTop (56).removeFromTop (60).reduced (20, 2);
     auto area = getLocalBounds().withTrimmedTop (116).reduced (20, 16);
     auto buttons = area.removeFromBottom (30);
-    const int bw = buttons.getWidth() / 6;
-    autoButton.setBounds (buttons.removeFromLeft (2 * bw).withSizeKeepingCentre (120, 28)); // sous RANGE + TIME
+    const int bw = buttons.getWidth() / 7;
+    autoButton.setBounds (buttons.removeFromLeft (2 * bw).withSizeKeepingCentre (120, 28)); // sous RANGE + ACTUALISATION
     buttons.removeFromLeft (bw);
     bypassButton.setBounds (buttons.removeFromLeft (bw).withSizeKeepingCentre (100, 28));   // sous OCTAVE
     area.removeFromBottom (6);
-    const int w = area.getWidth() / 6;
-    for (auto* k : { &range, &time, &direct, &octave, &compact, &sens })
+    const int w = area.getWidth() / 7;
+    for (auto* k : { &range, &time, &direct, &octave, &shape, &compact, &sens })
     {
         auto col = area.removeFromLeft (w).reduced (6, 0);
         k->label.setBounds (col.removeFromTop (22));

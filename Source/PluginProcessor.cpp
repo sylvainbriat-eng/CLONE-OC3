@@ -11,6 +11,7 @@ namespace ids
     static const juce::String sens    = "sensitivity";
     static const juce::String autoR   = "auto";
     static const juce::String time    = "time";
+    static const juce::String shape   = "shape";
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout CloneOC3Processor::createLayout()
@@ -42,12 +43,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout CloneOC3Processor::createLay
     // AUTO : le plafond suit le jeu (une octave au-dessus de la note la plus grave récente)
     p.push_back (std::make_unique<AudioParameterBool> (ParameterID { ids::autoR, 1 }, "Auto", false));
 
-    // TIME (mode AUTO) : vitesse à laquelle le plafond remonte quand on joue plus haut
+    // ACTUALISATION (mode AUTO, identifiant "time" conservé pour les projets déjà sauvegardés) : vitesse à laquelle le plafond remonte quand on joue plus haut
     NormalisableRange<float> timeRange (0.05f, 10.0f);
     timeRange.setSkewForCentre (1.0f);
-    p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { ids::time, 1 }, "Time", timeRange, 2.5f,
+    p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { ids::time, 1 }, "Actualisation", timeRange, 2.5f,
         AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int)
             { return v < 1.0f ? String ((int) std::round (v * 1000.0f)) + " ms" : String (v, 1) + " s"; })));
+
+    // FORME de l'octave : 0 % ronde (OC-3), 50 % timbre de la corde, 100 % carrée (OC-2)
+    p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { ids::shape, 1 }, "Forme",
+        NormalisableRange<float> (0.0f, 100.0f, 1.0f), 0.0f,
+        AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int) { return String ((int) v) + " %"; })));
 
     // Bypass de l'octave : seul le son direct passe (comme le footswitch de la pédale)
     p.push_back (std::make_unique<AudioParameterBool> (ParameterID { ids::bypass, 1 }, "Bypass", false));
@@ -69,6 +75,7 @@ CloneOC3Processor::CloneOC3Processor()
     sensParam    = apvts.getRawParameterValue (ids::sens);
     autoParam    = apvts.getRawParameterValue (ids::autoR);
     timeParam    = apvts.getRawParameterValue (ids::time);
+    shapeParam   = apvts.getRawParameterValue (ids::shape);
 }
 
 bool CloneOC3Processor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -120,6 +127,7 @@ void CloneOC3Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     p.sensitivity = sensParam->load() / 100.0;
     p.autoRange = autoParam->load() > 0.5f;
     p.timeSeconds = timeParam->load();
+    p.shape = shapeParam->load() / 100.0;
     engine.setParams (p);
 
     directGain.setTargetValue (juce::Decibels::decibelsToGain (directParam->load(), -59.9f));

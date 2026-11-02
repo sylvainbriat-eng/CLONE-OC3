@@ -170,6 +170,7 @@ public:
         double sensitivity = 0.5;  // anti-percussion : 0 = attaque franche, 1 = rejet strict des bruits
         bool   autoRange  = false; // AUTO : le plafond suit le jeu au lieu du bouton Range
         double timeSeconds = 2.5;  // AUTO : temps pour que le plafond remonte quand on joue plus haut
+        double shape      = 0.0;   // FORME : 0 = ronde (OC-3), 0,5 = timbre de la corde, 1 = carrée (OC-2)
     };
 
     // Pisteurs espacés d'1/6 d'octave, de 40 Hz à ~1080 Hz (mode AUTO ; en manuel
@@ -216,7 +217,8 @@ public:
 
     void setParams (const Params& p)
     {
-        if (std::abs (p.rangeHz - params.rangeHz) > 1.0e-6 || p.autoRange != params.autoRange) paramsDirty = true;
+        if (std::abs (p.rangeHz - params.rangeHz) > 1.0e-6 || p.autoRange != params.autoRange
+            || std::abs (p.shape - params.shape) > 1.0e-4) paramsDirty = true;
         if (std::abs (p.timeSeconds - params.timeSeconds) > 1.0e-6 || memoryRise <= 0.0)
             memoryRise = coef (std::max (0.01, p.timeSeconds));
         params = p;
@@ -263,7 +265,7 @@ public:
             if (params.autoRange)
             {
                 // Mémoire de la note la plus grave : descend tout de suite,
-                // remonte en suivant le bouton TIME quand on joue plus haut
+                // remonte en suivant le bouton ACTUALISATION quand on joue plus haut
                 // (TIME très court = on octavie toujours la note la plus grave).
                 if (memoryHz <= 0.0 || lowest < memoryHz) memoryHz = lowest;
                 else memoryHz *= std::pow (lowest / memoryHz, memoryRise);
@@ -305,15 +307,16 @@ public:
 
         // En AUTO, le filtre de l'octave suit la note jouée.
         if (params.autoRange && measuredHz > 0 && (++postCounter & 15) == 0)
-            post1.setLowpass (fs, std::max (60.0, 1.3 * measuredHz), 0.707);
+            post1.setLowpass (fs, std::max (60.0, 1.3 * measuredHz) * shapeOpen(), 0.707);
 
         // 5. Octave : sinusoïde de la note grave (normalisée) x bascule -> fréquence / 2,
         //    puis on lui redonne la dynamique du jeu. Fondu court lors d'un changement de pisteur.
-        double raw = voice (current);
+        const double string = lp / std::max (env, 1.0e-9); // la vraie corde grave, normalisée
+        double raw = voice (current, string);
         if (xfade < 1.0)
         {
             xfade = std::min (1.0, xfade + xfadeStep);
-            raw = xfade * raw + (1.0 - xfade) * voice (previous);
+            raw = xfade * raw + (1.0 - xfade) * voice (previous, string);
         }
         double sub = post1.process (raw * level);
 
@@ -331,12 +334,23 @@ public:
 private:
     double coef (double seconds) const { return 1.0 - std::exp (-1.0 / (seconds * fs)); }
 
-    inline double voice (int k) const
+    // FORME : la bascule (+1/-1, à la moitié de la fréquence) multiplie
+    //   0   -> la sinusoïde isolée par le pisteur : onde ronde (OC-3)
+    //   0,5 -> le son grave réel de la corde : garde son timbre
+    //   1   -> rien (onde carrée, 0,7 pour un niveau comparable) : octaver analogique (OC-2)
+    inline double voice (int k, double string) const
     {
         if (k < 0) return 0.0;
         const auto& t = trackers[k];
-        return t.flip * t.out / std::max (t.env, 1.0e-9);
+        const double round = t.out / std::max (t.env, 1.0e-9);
+        const double sh = std::clamp (params.shape, 0.0, 1.0);
+        const double carrier = sh < 0.5 ? round + 2.0 * sh * (string - round)
+                                         : string + (2.0 * sh - 1.0) * (0.7 - string);
+        return t.flip * carrier;
     }
+
+    // le filtre de lissage s'ouvre avec FORME (jusqu'à x3) pour laisser les harmoniques
+    double shapeOpen() const { return 1.0 + 2.0 * std::clamp (params.shape, 0.0, 1.0); }
 
     void select (int k)
     {
@@ -361,7 +375,7 @@ private:
         lp1.setLowpass (fs, fc, 0.5412); // Butterworth ordre 4
         lp2.setLowpass (fs, fc, 1.3066);
         presLp.setLowpass (fs, params.autoRange ? 300.0 : fc, 0.707);
-        post1.setLowpass (fs, std::max ((params.autoRange ? 150.0 : params.rangeHz) * 0.75, 60.0), 0.707);
+        post1.setLowpass (fs, std::max ((params.autoRange ? 150.0 : params.rangeHz) * 0.75, 60.0) * shapeOpen(), 0.707);
         numTrackers = 1;
         while (numTrackers < maxTrackers && trackers[numTrackers].fc < top * 1.1) ++numTrackers;
         if (current >= numTrackers) current = -1;

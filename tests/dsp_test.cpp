@@ -255,6 +255,25 @@ int main()
                      "Accords tenus (sons purs)", cases, worst, worst < 2.0 ? "OK" : "ECHEC");
     }
 
+    {
+        // FORME : l'octave doit rester à la bonne hauteur quelle que soit la forme
+        const std::vector<Note> chord = strum ({ E2, B2, E3, Gs3, B3, E4 });
+        for (double sh : { 0.0, 0.5, 1.0 })
+        {
+            auto in = pluck (chord, 1.5);
+            oc3::PolyOctaveEngine eng; eng.prepare (FS);
+            oc3::PolyOctaveEngine::Params p; p.shape = sh; eng.setParams (p);
+            std::vector<double> sub (in.size());
+            for (size_t i = 0; i < in.size(); ++i) sub[i] = eng.processSample (0.5 * in[i]);
+            const size_t a = (size_t) (0.4 * FS), b = (size_t) (0.9 * FS);
+            const double hz = autocorrPitch (sub, a, b, 20, 400);
+            const double db = 20 * std::log10 (rms (sub, a, b) / (0.5 * rms (in, a, b)) + 1e-12);
+            char name[64]; std::snprintf (name, sizeof name, "FORME %3.0f %% (accord de Mi)", sh * 100);
+            const bool ok = std::abs (hz / (E2 / 2) - 1) < 0.04 && db > -12;
+            std::printf ("%-34s attendu=%6.1fHz  mesuré=%6.1fHz  niveau=%6.1fdB  %s\n", name, E2 / 2, hz, db, ok ? "OK" : "ECHEC");
+        }
+    }
+
     std::printf ("\nBruits non tonaux (octave produite, par rapport à celle d'un Mi grave) :\n");
     runNoise ("Frappe sur la caisse", 0);
     runNoise ("Cordes étouffées grattées", 1);
