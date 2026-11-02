@@ -25,6 +25,7 @@ CloneOC3Editor::CloneOC3Editor (CloneOC3Processor& p) : AudioProcessorEditor (&p
     setLookAndFeel (&lnf);
 
     setupKnob (range, "range", "RANGE");
+    setupKnob (time, "time", "TIME");
     setupKnob (direct, "direct", "DIRECT");
     setupKnob (octave, "octave", "OCTAVE");
     setupKnob (compact, "compact", "COMPACT");
@@ -55,7 +56,7 @@ CloneOC3Editor::CloneOC3Editor (CloneOC3Processor& p) : AudioProcessorEditor (&p
     autoAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (processor.apvts, "auto", autoButton);
     updateAutoState();
 
-    setSize (640, 300);
+    setSize (760, 300);
     startTimerHz (20);
 }
 
@@ -91,6 +92,11 @@ void CloneOC3Editor::updateAutoState()
     range.label.setEnabled (! on);
     range.slider.setAlpha (on ? 0.35f : 1.0f);
     range.label.setAlpha (on ? 0.35f : 1.0f);
+    // TIME ne sert qu'en mode AUTO
+    time.slider.setEnabled (on);
+    time.label.setEnabled (on);
+    time.slider.setAlpha (on ? 1.0f : 0.35f);
+    time.label.setAlpha (on ? 1.0f : 0.35f);
 }
 
 void CloneOC3Editor::timerCallback()
@@ -136,13 +142,13 @@ void CloneOC3Editor::resized()
 {
     auto area = getLocalBounds().withTrimmedTop (56).reduced (20, 16);
     auto buttons = area.removeFromBottom (30);
-    const int bw = buttons.getWidth() / 5;
-    autoButton.setBounds (buttons.removeFromLeft (bw).withSizeKeepingCentre (100, 28));   // sous RANGE
+    const int bw = buttons.getWidth() / 6;
+    autoButton.setBounds (buttons.removeFromLeft (2 * bw).withSizeKeepingCentre (120, 28)); // sous RANGE + TIME
     buttons.removeFromLeft (bw);
-    bypassButton.setBounds (buttons.removeFromLeft (bw).withSizeKeepingCentre (100, 28)); // sous OCTAVE
+    bypassButton.setBounds (buttons.removeFromLeft (bw).withSizeKeepingCentre (100, 28));   // sous OCTAVE
     area.removeFromBottom (6);
-    const int w = area.getWidth() / 5;
-    for (auto* k : { &range, &direct, &octave, &compact, &sens })
+    const int w = area.getWidth() / 6;
+    for (auto* k : { &range, &time, &direct, &octave, &compact, &sens })
     {
         auto col = area.removeFromLeft (w).reduced (6, 0);
         k->label.setBounds (col.removeFromTop (22));

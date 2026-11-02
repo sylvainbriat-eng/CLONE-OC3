@@ -10,6 +10,7 @@ namespace ids
     static const juce::String bypass  = "bypass";
     static const juce::String sens    = "sensitivity";
     static const juce::String autoR   = "auto";
+    static const juce::String time    = "time";
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout CloneOC3Processor::createLayout()
@@ -41,6 +42,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout CloneOC3Processor::createLay
     // AUTO : le plafond suit le jeu (une octave au-dessus de la note la plus grave récente)
     p.push_back (std::make_unique<AudioParameterBool> (ParameterID { ids::autoR, 1 }, "Auto", false));
 
+    // TIME (mode AUTO) : vitesse à laquelle le plafond remonte quand on joue plus haut
+    NormalisableRange<float> timeRange (0.05f, 10.0f);
+    timeRange.setSkewForCentre (1.0f);
+    p.push_back (std::make_unique<AudioParameterFloat> (ParameterID { ids::time, 1 }, "Time", timeRange, 2.5f,
+        AudioParameterFloatAttributes().withStringFromValueFunction ([] (float v, int)
+            { return v < 1.0f ? String ((int) std::round (v * 1000.0f)) + " ms" : String (v, 1) + " s"; })));
+
     // Bypass de l'octave : seul le son direct passe (comme le footswitch de la pédale)
     p.push_back (std::make_unique<AudioParameterBool> (ParameterID { ids::bypass, 1 }, "Bypass", false));
 
@@ -60,6 +68,7 @@ CloneOC3Processor::CloneOC3Processor()
     bypassParam  = apvts.getRawParameterValue (ids::bypass);
     sensParam    = apvts.getRawParameterValue (ids::sens);
     autoParam    = apvts.getRawParameterValue (ids::autoR);
+    timeParam    = apvts.getRawParameterValue (ids::time);
 }
 
 bool CloneOC3Processor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -110,6 +119,7 @@ void CloneOC3Processor::processBlock (juce::AudioBuffer<float>& buffer, juce::Mi
     p.octaveGain = 1.0; // le niveau est lissé ci-dessous
     p.sensitivity = sensParam->load() / 100.0;
     p.autoRange = autoParam->load() > 0.5f;
+    p.timeSeconds = timeParam->load();
     engine.setParams (p);
 
     directGain.setTargetValue (juce::Decibels::decibelsToGain (directParam->load(), -59.9f));

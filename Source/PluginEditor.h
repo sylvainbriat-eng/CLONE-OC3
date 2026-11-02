@@ -26,7 +26,7 @@ private:
 
     CloneOC3Processor& processor;
     juce::LookAndFeel_V4 lnf;
-    Knob range, direct, octave, compact, sens;
+    Knob range, time, direct, octave, compact, sens;
     juce::TextButton bypassButton { "BYPASS" };
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bypassAttachment;
     void updateBypassState();

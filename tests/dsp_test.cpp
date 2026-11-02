@@ -202,6 +202,19 @@ int main()
     run ("AUTO : Mi2 puis Si3 seul -> pas d'oct.", { { E2, 0.05, 0.8, 0.30 }, { B3, 0.40, 0.8 } }, 150, B3, false, -200.0, true);
     run ("AUTO : accord Mi majeur", strum ({ E2, B2, E3, Gs3, B3, E4 }), 150, E2, true, -200.0, true);
     run ("AUTO : open D", strum ({ D2, A2, D3, Fs3, A3, D4 }), 150, D2, true, -200.0, true);
+    {
+        // TIME très court : le plafond suit immédiatement -> la mélodie seule est octaviée
+        auto in = pluck ({ { E2, 0.05, 0.8, 0.30 }, { B3, 0.40, 0.8 } }, 1.5);
+        oc3::PolyOctaveEngine eng; eng.prepare (FS);
+        oc3::PolyOctaveEngine::Params p; p.autoRange = true; p.timeSeconds = 0.05; eng.setParams (p);
+        std::vector<double> sub (in.size());
+        for (size_t i = 0; i < in.size(); ++i) sub[i] = eng.processSample (0.5 * in[i]);
+        const size_t a = (size_t) (0.7 * FS), b = (size_t) (1.2 * FS);
+        const double db = 20 * std::log10 (rms (sub, a, b) / (0.5 * rms (in, a, b)) + 1e-12);
+        const double hz = autocorrPitch (sub, a, b, 20, 400);
+        const bool ok = std::abs (hz / (B3 / 2) - 1) < 0.04 && db > -12;
+        std::printf ("%-34s attendu=%6.1fHz  mesuré=%6.1fHz  niveau=%6.1fdB  %s\n", "AUTO TIME court : Mi2 puis Si3", B3 / 2, hz, db, ok ? "OK" : "ECHEC");
+    }
     run ("AUTO : Mi4 seul (330 Hz) -> octave", { { E4, 0.05, 0.8 } }, 150, E4, true, -200.0, true);
 
     std::printf ("\nBruits non tonaux (octave produite, par rapport à celle d'un Mi grave) :\n");

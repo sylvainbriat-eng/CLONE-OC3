@@ -147,6 +147,7 @@ public:
         double compact    = 0.5;   // 0 = dynamique naturelle, 1 = bas très compressé
         double sensitivity = 0.5;  // anti-percussion : 0 = attaque franche, 1 = rejet strict des bruits
         bool   autoRange  = false; // AUTO : le plafond suit le jeu au lieu du bouton Range
+        double timeSeconds = 2.5;  // AUTO : temps pour que le plafond remonte quand on joue plus haut
     };
 
     // Pisteurs espacés d'1/4 d'octave, de 40 Hz à ~1080 Hz (mode AUTO ; en manuel
@@ -168,7 +169,6 @@ public:
         xfadeStep  = 1.0 / (0.004 * fs);
         unconfirmedMax = (long) (0.040 * fs);
         confirmAtk = coef (0.003);
-        memoryRise = coef (autoMemorySeconds);
         for (int k = 0; k < maxTrackers; ++k) trackers[k].setup (fs, 40.0 * std::pow (2.0, k / 4.0));
         paramsDirty = true;
         reset();
@@ -194,6 +194,8 @@ public:
     void setParams (const Params& p)
     {
         if (std::abs (p.rangeHz - params.rangeHz) > 1.0e-6 || p.autoRange != params.autoRange) paramsDirty = true;
+        if (std::abs (p.timeSeconds - params.timeSeconds) > 1.0e-6 || memoryRise <= 0.0)
+            memoryRise = coef (std::max (0.01, p.timeSeconds));
         params = p;
     }
 
@@ -237,7 +239,8 @@ public:
             if (params.autoRange)
             {
                 // Mémoire de la note la plus grave : descend tout de suite,
-                // remonte doucement (~2,5 s) quand on joue plus haut.
+                // remonte en suivant le bouton TIME quand on joue plus haut
+                // (TIME très court = on octavie toujours la note la plus grave).
                 if (memoryHz <= 0.0 || lowest < memoryHz) memoryHz = lowest;
                 else memoryHz *= std::pow (lowest / memoryHz, memoryRise);
             }
@@ -360,10 +363,9 @@ private:
     double gate = 0, gateTarget = 1.0;
     double confirmGain = 0, confirmAtk = 0.01;
     bool confirmedPhrase = false;
-    double memoryHz = 0, memoryRise = 0.0001;
+    double memoryHz = 0, memoryRise = 0.0;
     unsigned postCounter = 0;
 
-    static constexpr double autoMemorySeconds = 2.5;
     static constexpr double silenceThreshold = 0.0005; // ~ -66 dBFS
     static constexpr double presenceRatio = 0.08;      // une note qui s'éteint (-22 dB) ne compte plus
     static constexpr double compRef = 0.25;            // ~ -12 dBFS
